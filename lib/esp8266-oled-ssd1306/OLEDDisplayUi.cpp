@@ -1,8 +1,9 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016 by Daniel Eichhorn
- * Copyright (c) 2016 by Fabrice Weinberg
+ * Copyright (c) 2018 by ThingPulse, Daniel Eichhorn
+ * Copyright (c) 2018 by Fabrice Weinberg
+ * Copyright (c) 2019 by Helmut Tschemernjak - www.radioshuttle.de
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,12 +23,49 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  *
+ * ThingPulse invests considerable time and money to develop these open source libraries.
+ * Please support us by buying our products (and not the clones) from
+ * https://thingpulse.com
+ *
  */
 
 #include "OLEDDisplayUi.h"
 
+void LoadingDrawDefault(OLEDDisplay *display, LoadingStage* stage, uint8_t progress) {
+      display->setTextAlignment(TEXT_ALIGN_CENTER);
+      display->setFont(ArialMT_Plain_10);
+      display->drawString(64, 18, stage->process);
+      display->drawProgressBar(4, 32, 120, 8, progress);
+};
+
+
 OLEDDisplayUi::OLEDDisplayUi(OLEDDisplay *display) {
   this->display = display;
+	
+  indicatorPosition = BOTTOM;
+  indicatorDirection = LEFT_RIGHT;
+  activeSymbol = ANIMATION_activeSymbol;
+  inactiveSymbol = ANIMATION_inactiveSymbol;
+  frameAnimationDirection   = SLIDE_RIGHT;
+  lastTransitionDirection = 1;
+  frameCount = 0;
+  nextFrameNumber = -1;
+  overlayCount = 0;
+  indicatorDrawState = 1;
+  loadingDrawFunction = LoadingDrawDefault;
+  updateInterval = 33;
+  state.lastUpdate = 0;
+  state.ticksSinceLastStateSwitch = 0;
+  state.frameState = FIXED;
+  state.currentFrame = 0;
+  state.frameTransitionDirection = 1;
+  state.isIndicatorDrawen = true;
+  state.manuelControll = false;
+  state.userData = NULL;
+  shouldDrawIndicators = true;
+  autoTransition = true;
+  setTimePerFrame(5000);
+  setTimePerTransition(500);
 }
 
 void OLEDDisplayUi::init() {
@@ -35,13 +73,10 @@ void OLEDDisplayUi::init() {
 }
 
 void OLEDDisplayUi::setTargetFPS(uint8_t fps){
-  float oldInterval = this->updateInterval;
   this->updateInterval = ((float) 1.0 / (float) fps) * 1000;
 
-  // Calculate new ticksPerFrame
-  float changeRatio = oldInterval / (float) this->updateInterval;
-  this->ticksPerFrame *= changeRatio;
-  this->ticksPerTransition *= changeRatio;
+  this->ticksPerFrame = timePerFrame / updateInterval;
+  this->ticksPerTransition = timePerTransition / updateInterval;
 }
 
 // -/------ Automatic controll ------\-
@@ -61,10 +96,12 @@ void OLEDDisplayUi::setAutoTransitionBackwards(){
   this->lastTransitionDirection = -1;
 }
 void OLEDDisplayUi::setTimePerFrame(uint16_t time){
-  this->ticksPerFrame = (int) ( (float) time / (float) updateInterval);
+  this->timePerFrame = time;
+  this->ticksPerFrame = timePerFrame / updateInterval;
 }
 void OLEDDisplayUi::setTimePerTransition(uint16_t time){
-  this->ticksPerTransition = (int) ( (float) time / (float) updateInterval);
+  this->timePerTransition = time;
+  this->ticksPerTransition = timePerTransition / updateInterval;
 }
 
 // -/------ Customize indicator position and style -------\-
@@ -90,10 +127,10 @@ void OLEDDisplayUi::setIndicatorPosition(IndicatorPosition pos) {
 void OLEDDisplayUi::setIndicatorDirection(IndicatorDirection dir) {
   this->indicatorDirection = dir;
 }
-void OLEDDisplayUi::setActiveSymbol(const char* symbol) {
+void OLEDDisplayUi::setActiveSymbol(const uint8_t* symbol) {
   this->activeSymbol = symbol;
 }
-void OLEDDisplayUi::setInactiveSymbol(const char* symbol) {
+void OLEDDisplayUi::setInactiveSymbol(const uint8_t* symbol) {
   this->inactiveSymbol = symbol;
 }
 
@@ -188,18 +225,31 @@ OLEDDisplayUiState* OLEDDisplayUi::getUiState(){
   return &this->state;
 }
 
-
-int8_t OLEDDisplayUi::update(){
-  long frameStart = millis();
-  int8_t timeBudget = this->updateInterval - (frameStart - this->state.lastUpdate);
+int16_t OLEDDisplayUi::update(){
+#ifdef ARDUINO
+  unsigned long frameStart = millis();
+#elif __MBED__
+	Timer t;
+	t.start();
+	unsigned long frameStart = t.read_ms();
+#else
+#error "Unkown operating system"
+#endif
+  int32_t timeBudget = this->updateInterval - (frameStart - this->state.lastUpdate);
   if ( timeBudget <= 0) {
     // Implement frame skipping to ensure time budget is keept
-    if (this->autoTransition && this->state.lastUpdate != 0) this->state.ticksSinceLastStateSwitch += ceil(-timeBudget / this->updateInterval);
+    if (this->autoTransition && this->state.lastUpdate != 0) this->state.ticksSinceLastStateSwitch += ceil((double)-timeBudget / (double)this->updateInterval);
 
     this->state.lastUpdate = frameStart;
     this->tick();
   }
+#ifdef ARDUINO
   return this->updateInterval - (millis() - frameStart);
+#elif __MBED__
+  return this->updateInterval - (t.read_ms() - frameStart);
+#else
+#error "Unkown operating system"
+#endif
 }
 
 
@@ -251,7 +301,7 @@ void OLEDDisplayUi::drawFrame(){
   switch (this->state.frameState){
      case IN_TRANSITION: {
        float progress = (float) this->state.ticksSinceLastStateSwitch / (float) this->ticksPerTransition;
-       int16_t x = 0, y = 0, x1 = 0, y1 = 0; 
+       int16_t x = 0, y = 0, x1 = 0, y1 = 0;
        switch(this->frameAnimationDirection){
         case SLIDE_LEFT:
           x = -this->display->width() * progress;
@@ -272,6 +322,7 @@ void OLEDDisplayUi::drawFrame(){
           y1 = y + this->display->height();
           break;
         case SLIDE_DOWN:
+        default:
           x = 0;
           y = this->display->height() * progress;
           x1 = 0;
@@ -345,6 +396,7 @@ void OLEDDisplayUi::drawIndicator() {
         posOfHighlightFrame = frameToHighlight;
         break;
       case RIGHT_LEFT:
+      default:
         posOfHighlightFrame = this->frameCount - frameToHighlight;
         break;
     }
@@ -360,10 +412,19 @@ void OLEDDisplayUi::drawIndicator() {
         break;
     }
 
-    uint16_t frameStartPos = (12 * frameCount / 2);
-    const char *image;
-    uint16_t x = 0, y = 0;
-    for (byte i = 0; i < this->frameCount; i++) {
+    //Space between indicators - reduce for small screen sizes
+    uint16_t indicatorSpacing = 12;
+    if (this->display->getHeight() < 64 && (this->indicatorPosition == RIGHT || this->indicatorPosition == LEFT)) {
+      indicatorSpacing = 6;
+    }
+
+    uint16_t frameStartPos = (indicatorSpacing * frameCount / 2);
+    const uint8_t *image;
+
+    uint16_t x = 0,y = 0;
+
+
+    for (uint8_t i = 0; i < this->frameCount; i++) {
 
       switch (this->indicatorPosition){
         case TOP:
@@ -379,8 +440,9 @@ void OLEDDisplayUi::drawIndicator() {
           y = (this->display->height() / 2) - frameStartPos + 2 + 12 * i;
           break;
         case LEFT:
+        default:
           x = 0 - (8 * indicatorFadeProgress);
-          y = (this->display->height() / 2) - frameStartPos + 2 + 12 * i;
+          y = (this->display->height() / 2) - frameStartPos + 2 + indicatorSpacing * i;
           break;
       }
 

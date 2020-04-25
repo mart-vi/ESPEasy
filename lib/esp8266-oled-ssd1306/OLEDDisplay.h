@@ -1,8 +1,9 @@
 /**
  * The MIT License (MIT)
  *
- * Copyright (c) 2016 by Daniel Eichhorn
- * Copyright (c) 2016 by Fabrice Weinberg
+ * Copyright (c) 2018 by ThingPulse, Daniel Eichhorn
+ * Copyright (c) 2018 by Fabrice Weinberg
+ * Copyright (c) 2019 by Helmut Tschemernjak - www.radioshuttle.de
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -22,16 +23,48 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  *
- * Credits for parts of this code go to Mike Rankin. Thank you so much for sharing!
+ * ThingPulse invests considerable time and money to develop these open source libraries.
+ * Please support us by buying our products (and not the clones) from
+ * https://thingpulse.com
+ *
  */
 
 #ifndef OLEDDISPLAY_h
 #define OLEDDISPLAY_h
 
+#ifdef ARDUINO
 #include <Arduino.h>
+#elif __MBED__
+#define pgm_read_byte(addr)   (*(const unsigned char *)(addr))
+
+#include <mbed.h>
+#define delay(x)	wait_ms(x)
+#define yield()		void()
+
+/*
+ * This is a little Arduino String emulation to keep the OLEDDisplay
+ * library code in common between Arduino and mbed-os
+ */
+class String {
+public:
+	String(const char *s) { _str = s; };
+	int length() { return strlen(_str); };
+	const char *c_str() { return _str; };
+    void toCharArray(char *buf, unsigned int bufsize, unsigned int index = 0) const {
+		memcpy(buf, _str + index,  std::min(bufsize, strlen(_str)));
+	};
+private:
+	const char *_str;
+};
+
+#else
+#error "Unkown operating system"
+#endif
+
 #include "OLEDDisplayFonts.h"
 
 //#define DEBUG_OLEDDISPLAY(...) Serial.printf( __VA_ARGS__ )
+//#define DEBUG_OLEDDISPLAY(...) dprintf("%s",  __VA_ARGS__ )
 
 #ifndef DEBUG_OLEDDISPLAY
 #define DEBUG_OLEDDISPLAY(...)
@@ -41,16 +74,6 @@
 #ifndef OLEDDISPLAY_REDUCE_MEMORY
 #define OLEDDISPLAY_DOUBLE_BUFFER
 #endif
-
-
-// Display settings
-#ifndef DISPLAY_WIDTH
-  #define DISPLAY_WIDTH 128
-#endif
-#ifndef DISPLAY_HEIGHT
-  #define DISPLAY_HEIGHT 64
-#endif
-#define DISPLAY_BUFFER_SIZE DISPLAY_WIDTH * DISPLAY_HEIGHT / 8
 
 // Header Values
 #define JUMPTABLE_BYTES 4
@@ -112,18 +135,37 @@ enum OLEDDISPLAY_TEXT_ALIGNMENT {
 };
 
 
-class OLEDDisplay : public Print {
-  private:
-    const int _width, _height;
+enum OLEDDISPLAY_GEOMETRY {
+  GEOMETRY_128_64   = 0,
+  GEOMETRY_128_32,
+  GEOMETRY_RAWMODE,
+};
+
+typedef char (*FontTableLookupFunction)(const uint8_t ch);
+char DefaultFontTableLookup(const uint8_t ch);
+
+
+#ifdef ARDUINO
+class OLEDDisplay : public Print  {
+#elif __MBED__
+class OLEDDisplay : public Stream {
+#else
+#error "Unkown operating system"
+#endif
 
   public:
-    OLEDDisplay(const int width = DISPLAY_WIDTH, const int height = DISPLAY_HEIGHT) : _width(width), _height(height){ };
+	OLEDDisplay();
     virtual ~OLEDDisplay();
 
-    const int width(void) const { return _width; };
-    const int height(void) const { return _height; };
+	uint16_t width(void) const { return displayWidth; };
+	uint16_t height(void) const { return displayHeight; };
 
-    // Initialize the display
+    // Use this to resume after a deep sleep without resetting the display (what init() would do).
+    // Returns true if connection to the display was established and the buffer allocated, false otherwise.
+    bool allocateBuffer();
+
+    // Allocates the buffer and initializes the driver & display. Resets the display!
+    // Returns false if buffer allocation failed, true otherwise.
     bool init();
 
     // Free the memory used by the display
@@ -136,8 +178,17 @@ class OLEDDisplay : public Print {
     // Sets the color of all pixel operations
     void setColor(OLEDDISPLAY_COLOR color);
 
+    // Returns the current color.
+    OLEDDISPLAY_COLOR getColor();
+
     // Draw a pixel at given position
     void setPixel(int16_t x, int16_t y);
+
+    // Draw a pixel at given position and color
+    void setPixelColor(int16_t x, int16_t y, OLEDDISPLAY_COLOR color);
+
+    // Clear a pixel at given position FIXME: INVERSE is untested with this function
+    void clearPixel(int16_t x, int16_t y);
 
     // Draw a line from position 0 to position 1
     void drawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1);
@@ -160,7 +211,7 @@ class OLEDDisplay : public Print {
     // Draw a line horizontally
     void drawHorizontalLine(int16_t x, int16_t y, int16_t length);
 
-    // Draw a lin vertically
+    // Draw a line vertically
     void drawVerticalLine(int16_t x, int16_t y, int16_t length);
 
     // Draws a rounded progress bar with the outer dimensions given by width and height. Progress is
@@ -168,10 +219,13 @@ class OLEDDisplay : public Print {
     void drawProgressBar(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint8_t progress);
 
     // Draw a bitmap in the internal image format
-    void drawFastImage(int16_t x, int16_t y, int16_t width, int16_t height, const char *image);
+    void drawFastImage(int16_t x, int16_t y, int16_t width, int16_t height, const uint8_t *image);
 
     // Draw a XBM
-    void drawXbm(int16_t x, int16_t y, int16_t width, int16_t height, const char *xbm);
+    void drawXbm(int16_t x, int16_t y, int16_t width, int16_t height, const uint8_t *xbm);
+
+    // Draw icon 16x16 xbm format
+    void drawIco16x16(int16_t x, int16_t y, const char *ico, bool inverse = false);
 
     /* Text functions */
 
@@ -197,7 +251,10 @@ class OLEDDisplay : public Print {
 
     // Sets the current font. Available default fonts
     // ArialMT_Plain_10, ArialMT_Plain_16, ArialMT_Plain_24
-    void setFont(const char *fontData);
+    void setFont(const uint8_t *fontData);
+
+    // Set the function that will convert utf-8 to font table index
+    void setFontTableLookupFunction(FontTableLookupFunction function);
 
     /* Display functions */
 
@@ -216,10 +273,19 @@ class OLEDDisplay : public Print {
     // Set display contrast
     // really low brightness & contrast: contrast = 10, precharge = 5, comdetect = 0
     // normal brightness & contrast:  contrast = 100
-    void setContrast(char contrast, char precharge = 241, char comdetect = 64);
+    void setContrast(uint8_t contrast, uint8_t precharge = 241, uint8_t comdetect = 64);
+
+    // Convenience method to access 
+    void setBrightness(uint8_t);
+
+    // Reset display rotation or mirroring
+    void resetOrientation();
 
     // Turn the display upside down
     void flipScreenVertically();
+
+    // Mirror the display (to be used in a mirror or as a projector)
+    void mirrorScreen();
 
     // Write the buffer to the display memory
     virtual void display(void) = 0;
@@ -237,30 +303,54 @@ class OLEDDisplay : public Print {
     // Draw the log buffer at position (x, y)
     void drawLogBuffer(uint16_t x, uint16_t y);
 
-    // Implementent needed function to be compatible with Print class
+    // Get screen geometry
+    uint16_t getWidth(void);
+    uint16_t getHeight(void);
+
+    // Implement needed function to be compatible with Print class
     size_t write(uint8_t c);
     size_t write(const char* s);
+	
+    // Implement needed function to be compatible with Stream class
+#ifdef __MBED__
+	int _putc(int c);
+	int _getc() { return -1; };
+#endif
 
-    uint8_t            *buffer = NULL;
+
+    uint8_t            *buffer;
 
     #ifdef OLEDDISPLAY_DOUBLE_BUFFER
-    uint8_t            *buffer_back = NULL;
+    uint8_t            *buffer_back;
     #endif
 
   protected:
 
-    OLEDDISPLAY_TEXT_ALIGNMENT   textAlignment = TEXT_ALIGN_LEFT;
-    OLEDDISPLAY_COLOR            color         = WHITE;
+    OLEDDISPLAY_GEOMETRY geometry;
 
-    const char          *fontData              = ArialMT_Plain_10;
+    uint16_t  displayWidth;
+    uint16_t  displayHeight;
+    uint16_t  displayBufferSize;
+
+    // Set the correct height, width and buffer for the geometry
+    void setGeometry(OLEDDISPLAY_GEOMETRY g, uint16_t width = 0, uint16_t height = 0);
+
+    OLEDDISPLAY_TEXT_ALIGNMENT   textAlignment;
+    OLEDDISPLAY_COLOR            color;
+
+    const uint8_t	 *fontData;
 
     // State values for logBuffer
-    uint16_t   logBufferSize                   = 0;
-    uint16_t   logBufferFilled                 = 0;
-    uint16_t   logBufferLine                   = 0;
-    uint16_t   logBufferMaxLines               = 0;
-    char      *logBuffer                       = NULL;
+    uint16_t   logBufferSize;
+    uint16_t   logBufferFilled;
+    uint16_t   logBufferLine;
+    uint16_t   logBufferMaxLines;
+    char      *logBuffer;
 
+
+	// the header size of the buffer used, e.g. for the SPI command header
+	virtual int getBufferOffset(void) = 0;
+	
     // Send a command to the display (low level function)
     virtual void sendCommand(uint8_t com) {(void)com;};
 
@@ -271,13 +361,13 @@ class OLEDDisplay : public Print {
     void sendInitCommands();
 
     // converts utf8 characters to extended ascii
-    static char* utf8ascii(String s);
-    static byte utf8ascii(byte ascii);
+    char* utf8ascii(String s);
 
-    void inline drawInternal(int16_t xMove, int16_t yMove, int16_t width, int16_t height, const char *data, uint16_t offset, uint16_t bytesInData) __attribute__((always_inline));
+    void inline drawInternal(int16_t xMove, int16_t yMove, int16_t width, int16_t height, const uint8_t *data, uint16_t offset, uint16_t bytesInData) __attribute__((always_inline));
 
     void drawStringInternal(int16_t xMove, int16_t yMove, char* text, uint16_t textLength, uint16_t textWidth);
-
+	
+	FontTableLookupFunction fontTableLookupFunction;
 };
 
 #endif
