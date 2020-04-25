@@ -289,7 +289,7 @@ boolean Plugin_023(byte function, struct EventStruct *event, String& string)
   return success;
 }
 
-const char Plugin_023_myFont_Size[] PROGMEM = {
+const uint8_t Plugin_023_myFont_Size[] = {
   0x05,  // SPACE
   0x05,  // !
   0x07,  // "
@@ -399,7 +399,7 @@ String P023_parseTemplate(String &tmpString, byte lineSize) {
 
 
 
-const char Plugin_023_myFont[][8] PROGMEM = {
+const uint8_t  Plugin_023_myFont[][8] PROGMEM = {
   {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // SPACE
   {0x00, 0x00, 0x5F, 0x00, 0x00, 0x00, 0x00, 0x00},  // !
   {0x00, 0x00, 0x07, 0x00, 0x07, 0x00, 0x00, 0x00},  // "
