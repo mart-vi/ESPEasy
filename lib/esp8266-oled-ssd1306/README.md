@@ -1,29 +1,42 @@
-esp8266-oled-ssd1306 [![Build Status](https://travis-ci.org/squix78/esp8266-oled-ssd1306.svg?branch=dev-branch-3.0.0)](https://travis-ci.org/squix78/esp8266-oled-ssd1306)
-============
+[![Build Status](https://travis-ci.org/ThingPulse/esp8266-oled-ssd1306.svg?branch=master)](https://travis-ci.org/ThingPulse/esp8266-oled-ssd1306)
 
-> We just released version 3.0.0. Please have a look at our [upgrade guide](UPGRADE-3.0.md)
+# ThingPulse OLED SSD1306 (ESP8266/ESP32/Mbed-OS)
 
-This is a driver for the SSD1306 based 128x64 pixel OLED display running on the Arduino/ESP8266 platform.
-Can be used with either the I2C or SPI version of the display
+> We just released version 4.0.0. Please have a look at our [upgrade guide](UPGRADE-4.0.md)
 
-You can either download this library as a zip file and unpack it to your Arduino/libraries folder or (once it has been added) choose it from the Arduino library manager.
+This is a driver for SSD1306 128x64 and 128x32 OLED displays running on the Arduino/ESP8266 & ESP32 and mbed-os platforms.
+Can be used with either the I2C or SPI version of the display.
+
+You can either download this library as a zip file and unpack it to your Arduino/libraries folder or find it in the Arduino library manager under "ESP8266 and ESP32 Oled Driver for SSD1306 display". For mbed-os a copy of the files are available as an mbed-os library. 
 
 It is also available as a platformio library. Just execute the following command:
 ```
 platformio lib install 562
 ```
 
+## Service level promise
+
+<table><tr><td><img src="https://thingpulse.com/assets/ThingPulse-open-source-prime.png" width="150">
+</td><td>This is a ThingPulse <em>prime</em> project. See our <a href="https://thingpulse.com/about/open-source-commitment/">open-source commitment declaration</a> for what this means.</td></tr></table>
+
 ## Credits
-This library has initially been written by Daniel Eichhorn (@squix78). Many thanks go to Fabrice Weinberg (@FWeinb) for optimizing and refactoring many aspects of the library. Also many thanks to the many committers who helped to add new features and who fixed many bugs.
+
+This library has initially been written by Daniel Eichhorn ([@squix78](https://github.com/squix78)). Many thanks go to Fabrice Weinberg ([@FWeinb](https://github.com/FWeinb)) for optimizing and refactoring many aspects of the library. Also many thanks to the many committers who helped to add new features and who fixed many bugs. Mbed-OS support and other improvements were contributed by Helmut Tschemernjak ([@helmut64](https://github.com/helmut64)).
+
 The init sequence for the SSD1306 was inspired by Adafruit's library for the same display.
+
+## mbed-os
+This library has been adopted to support the ARM mbed-os environment. A copy of this library is available in mbed-os under the name OLED_SSD1306 by Helmut Tschemernjak. An alternate installation option is to copy the following files into your mbed-os project: OLEDDisplay.cpp OLEDDisplay.h OLEDDisplayFonts.h OLEDDisplayUi.cpp OLEDDisplayUi.h SSD1306I2C.h
 
 ## Usage
 
-Check out the examples folder for a few comprehensive demonstrations how to use the library. Also check out the ESP8266 Weather Station library (https://github.com/squix78/esp8266-weather-station) which uses the OLED library to display beautiful weather information.
+Check out the examples folder for a few comprehensive demonstrations how to use the library. Also check out the [ESP8266 Weather Station](https://github.com/ThingPulse/esp8266-weather-station) library which uses the OLED library to display beautiful weather information.
 
 ## Upgrade
 
 The API changed a lot with the 3.0 release. If you were using this library with older versions please have a look at the [Upgrade Guide](UPGRADE-3.0.md).
+
+Going from 3.x version to 4.0 a lot of internals changed and compatibility for more displays was added. Please read the [Upgrade Guide](UPGRADE-4.0.md).
 
 ## Features
 
@@ -51,22 +64,26 @@ Choose the font family, style and size, check the preview image and if you like 
 
 ## Hardware Abstraction
 
-The library supports different protocols to access the OLED display. Currently there is support for I2C using the built in Wire.h library, I2C by using the much faster BRZO I2C library [https://github.com/pasko-zh/brzo_i2c] written in assembler and it also supports displays which come with the SPI interface.
+The library supports different protocols to access the OLED display. Currently there is support for I2C using the built in Wire.h library, I2C by using the much faster [BRZO I2C library](https://github.com/pasko-zh/brzo_i2c) written in assembler and it also supports displays which come with the SPI interface.
 
 ### I2C with Wire.h
 
 ```C++
 #include <Wire.h>  
-#include "SSD1306.h"
+#include "SSD1306Wire.h"
 
-SSD1306  display(ADDRESS, SDA, SDC);
+// for 128x64 displays:
+SSD1306Wire display(0x3c, SDA, SCL);  // ADDRESS, SDA, SCL
+// for 128x32 displays:
+// SSD1306Wire display(0x3c, SDA, SCL, GEOMETRY_128_32);  // ADDRESS, SDA, SCL, GEOMETRY_128_32 (or 128_64)
 ```
-or for a SH1106:
+
+for a SH1106:
 ```C++
 #include <Wire.h>  
-#include "SH1106.h"
+#include "SH1106Wire.h"
 
-SH1106  display(ADDRESS, SDA, SDC);
+SH1106Wire display(0x3c, SDA, SCL);  // ADDRESS, SDA, SCL
 ```
 
 ### I2C with brzo_i2c
@@ -75,14 +92,14 @@ SH1106  display(ADDRESS, SDA, SDC);
 #include <brzo_i2c.h>
 #include "SSD1306Brzo.h"
 
-SSD1306Brzo display(ADDRESS, SDA, SDC);
+SSD1306Brzo display(0x3c, SDA, SCL);  // ADDRESS, SDA, SCL
 ```
 or for the SH1106:
 ```C++
 #include <brzo_i2c.h>
 #include "SH1106Brzo.h"
 
-SH1106Brzo display(ADDRESS, SDA, SDC);
+SH1106Brzo display(0x3c, SDA, SCL);  // ADDRESS, SDA, SCL
 ```
 
 ### SPI
@@ -91,14 +108,14 @@ SH1106Brzo display(ADDRESS, SDA, SDC);
 #include <SPI.h>
 #include "SSD1306Spi.h"
 
-SSD1306Spi display(RES, DC, CS);
+SSD1306Spi display(D0, D2, D8);  // RES, DC, CS
 ```
 or for the SH1106:
 ```C++
 #include <SPI.h>
 #include "SH1106Spi.h"
 
-SH1106Spi display(RES, DC, CS);
+SH1106Spi display(D0, D2);  // RES, DC
 ```
 
 ## API
@@ -137,10 +154,18 @@ void invertDisplay(void);
 void normalDisplay(void);
 
 // Set display contrast
-void setContrast(char contrast);
+// really low brightness & contrast: contrast = 10, precharge = 5, comdetect = 0
+// normal brightness & contrast:  contrast = 100
+void setContrast(uint8_t contrast, uint8_t precharge = 241, uint8_t comdetect = 64);
+
+// Convenience method to access
+void setBrightness(uint8_t);
 
 // Turn the display upside down
 void flipScreenVertically();
+
+// Draw the screen mirrored
+void mirrorScreen();
 ```
 
 ## Pixel drawing
@@ -180,7 +205,7 @@ void drawVerticalLine(int16_t x, int16_t y, int16_t length);
 void drawProgressBar(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint8_t progress);
 
 // Draw a bitmap in the internal image format
-void drawFastImage(int16_t x, int16_t y, int16_t width, int16_t height, const char *image);
+void drawFastImage(int16_t x, int16_t y, int16_t width, int16_t height, const uint8_t *image);
 
 // Draw a XBM
 void drawXbm(int16_t x, int16_t y, int16_t width, int16_t height, const char* xbm);
@@ -211,7 +236,7 @@ void setTextAlignment(OLEDDISPLAY_TEXT_ALIGNMENT textAlignment);
 // Sets the current font. Available default fonts
 // ArialMT_Plain_10, ArialMT_Plain_16, ArialMT_Plain_24
 // Or create one with the font tool at http://oleddisplay.squix.ch
-void setFont(const char* fontData);
+void setFont(const uint8_t* fontData);
 ```
 
 ## Ui Library (OLEDDisplayUi)
@@ -386,8 +411,10 @@ This shows how to use define a maximum width after which the driver automaticall
 
 This shows the code working on the SPI version of the display. See demo code for ESP8266 pins used.
 
-## Project using this library
+## Selection of projects using this library
 
  * [QRCode ESP8266](https://github.com/anunpanya/ESP8266_QRcode) (by @anunpanya)
  * [Scan I2C](https://github.com/hallard/Scan-I2C-WiFi) (by @hallard)
- * [Weather Station](https://github.com/squix78/esp8266-weather-station) (by @squix)
+ * [ThingPulse Weather Station](https://github.com/ThingPulse/esp8266-weather-station)
+ * [Meshtastic](https://www.meshtastic.org/) - an open source GPS communicator mesh radio
+ * Yours?
